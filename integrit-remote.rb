@@ -19,7 +19,6 @@ class Integrit_Remote
   DATABASE_DIR = BASE_DIR+'/databases/'
   VERSION = '0.0.1'
 
-  #
   # == Initialize
   # Set various defaults and options.
   def initialize(arguments, stdin)
@@ -38,7 +37,21 @@ class Integrit_Remote
   end
 
   def run
-    # Parse options
+
+    if parse_options?
+      exit unless arguments_valid? {|e| puts e}
+
+      check_site  if @options[:check]
+      update_site if @options[:update]
+      init_site   if @options[:init]
+    end
+    output if (@options[:outputList])
+
+  end
+
+  protected
+
+  def parse_options?
     opts = OptionParser.new
     opts.banner = "Usage: integrit-remote.rb [--init|--update|--check] sitename"
 
@@ -58,28 +71,34 @@ class Integrit_Remote
     opts.on('-i', '--init SITE', 'Create the first known-good database for a site') do |sitename|
       @options[:init] = sitename
       @options[:outputList] = false
-      init_site
     end
 
     opts.on('-u', '--update SITE', 'Update an existing site\'s known-good db') do |sitename|
       @options[:update] = sitename
       @options[:outputList] = false
-      update_site
     end
 
     opts.on('-c', '--check SITE', 'Check an existing site\'s integrity') do |sitename|
       @options[:check] = sitename
       @options[:outputList] = false
-      check_site
     end
 
     opts.parse!(@arguments)
-
-    output if (@options[:outputList])
-
   end
 
-  protected
+  def arguments_valid?
+    if @options[:check] && @options[:mailserver].nil?
+      yield "You must specify a mailserver."
+      return false
+    end
+
+    if @options[:check] && @options[:to_address].nil?
+      yield "You must specify a to: address."
+      return false
+    end
+
+    true
+  end
 
   def init_site
     # Create config
@@ -112,9 +131,10 @@ class Integrit_Remote
     # Update known-good db
     # Get the config file...
 
-    # TODO: Freak out if the mailserver isn't supplied
-    # TODO: Freak out if the to_address isn't specified
     # TODO: Pull email template from a file
+
+    puts "Error: You must provide a mailserver." unless !@options[:mailserver].nil?
+
     config_filename = @options[:check]+".integrit.conf"
     config_file = @local[CONFIG_DIR+"/"+config_filename]
     host = remote_host config_file
@@ -186,7 +206,7 @@ MESSAGE_END
     end
   end
 
-  #Output list of sites
+  # Output list of sites
   def output
     puts "Config files exist for the following sites:"
     @local[CONFIG_DIR].contents.each do |file|
