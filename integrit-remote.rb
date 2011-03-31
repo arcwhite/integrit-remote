@@ -11,6 +11,7 @@ require 'rdoc/usage'
 require 'ostruct'
 require 'rubygems'
 require 'rush'
+require 'erb'
 
 class Integrit_Remote
   BASE_DIR = Dir.pwd
@@ -34,6 +35,7 @@ class Integrit_Remote
     @options[:mailserver] = nil
     @options[:from_address] = "integrit@test.com" # test.com is an RFC'd black hole
     @options[:to_address] = nil
+    @options[:email_template] = "template.erb"
   end
 
   def run
@@ -56,33 +58,33 @@ class Integrit_Remote
     opts.banner = "Usage: integrit-remote.rb [--init|--update|--check] site_name"
 
     #The mailserver MUST be specified
-    opts.on('-m', '--mailserver', 'Specify the mailserver') do |mail_server|
+    opts.on('-m', '--mailserver smtp.mail.com', 'Specify the mailserver') do |mail_server|
       @options[:mailserver] = mail_server
     end
 
-    opts.on('-f', '--from', 'Specify the from-address of the email') do |from_address|
+    opts.on('-f', '--from integrit@you.com', 'Specify the from-address of the email') do |from_address|
       @options[:from_address] = from_address
     end
 
-    opts.on('-t', '--to', 'Specify the to address of the email') do |to_address|
+    opts.on('-t', '--to user@example.com', 'Specify the to address of the email') do |to_address|
       @options[:to_address] = to_address
     end
 
     opts.on('-i', '--init SITE', 'Create the first known-good database for a site') do |site_name|
-      @options[:init] = true
-      @options[:sitename] = site_name
+      @options[:init]       = true
+      @options[:sitename]   = site_name
       @options[:outputList] = false
     end
 
     opts.on('-u', '--update SITE', 'Update an existing site\'s known-good db') do |site_name|
-      @options[:update] = true
-      @options[:sitename] = site_name
+      @options[:update]     = true
+      @options[:sitename]   = site_name
       @options[:outputList] = false
     end
 
     opts.on('-c', '--check SITE', 'Check an existing site\'s integrity') do |site_name|
-      @options[:check] = true
-      @options[:sitename] = site_name
+      @options[:check]      = true
+      @options[:sitename]   = site_name
       @options[:outputList] = false
     end
 
@@ -100,38 +102,53 @@ class Integrit_Remote
       return false
     end
 
-    if @options[:sitename] && @local[CONFIG_DIR+"/"+@options[:sitename]].contents_or_blank.eql?("")
+    if @options[:sitename] && config_file.contents_or_blank.eql?("")
       yield "Invalid config file."
       return false
     end
 
-    if @options[:check]
-
+    if get_mail_template(@options[:email_template]).contents_or_blank.eql?("")
+      yield "Invalid email template file"
+      return false
     end
-
     true
+  end
+
+  def config_filename
+    CONFIG_DIR+"/"+@options[:sitename]+".integrit.conf"
+  end
+
+  def config_file
+    @local[config_filename]
+  end
+
+  def get_mail_template(filename)
+    @local[BASE_DIR+"/"+filename]
+  end
+
+  def email_template(filename)
+    template = ERB.new get_mail_template(filename).contents
+    template.result(binding)
   end
 
   def init_site
     # Create config
+    # TODO: Implement
     puts @options[:init]
   end
 
   # Update known-good db
-  # Get the config file...
   def update_site
-    config_filename = @options[:update]+".integrit.conf"
-    config_file = @local[CONFIG_DIR+"/"+config_filename]
     host = remote_host config_file
 
-    upload_binary_and_config(config_file, config_filename, host)
+    upload_binary_and_config config_file, config_filename, host
 
     # Remote-execute
     begin
       if (@local.bash 'ssh '+host+' ./integrit -u -C '+config_filename) then
         # Execution was successful; grab the newly-generated cdb file and move to local
-        local_filename_db = @options[:update]+".integrit.known.cdb"
-        remote_filename_db = @options[:update]+".integrit.current.cdb"
+        local_filename_db   = @options[:update]+".integrit.known.cdb"
+        remote_filename_db  = @options[:update]+".integrit.current.cdb"
         transfer host+":"+remote_filename_db, DATABASE_DIR+"/"+local_filename_db
       end
     rescue Rush::BashFailed => e
@@ -143,45 +160,28 @@ class Integrit_Remote
     # Update known-good db
     # Get the config file...
 
-    # TODO: Pull email template from a file
+    @host = remote_host config_file
 
-    puts "Error: You must provide a mailserver." unless !@options[:mailserver].nil?
-
-    config_filename = @options[:check]+".integrit.conf"
-    config_file = @local[CONFIG_DIR+"/"+config_filename]
-    host = remote_host config_file
-
-    upload_binary_and_config(config_file, config_filename, host)
+    upload_binary_and_config(config_file, config_filename, @host)
 
     known_db = @options[:check]+".integrit.known.cdb"
-    transfer DATABASE_DIR+"/"+known_db, host+":"+known_db
+    transfer DATABASE_DIR+"/"+known_db, @host+":"+known_db
 
     begin
-      output = @local.bash 'ssh '+host+' ./integrit -c -C '+config_filename
+      output = @local.bash 'ssh '+@host+' ./integrit -c -C '+config_filename
       puts output
       if output.match(/^(changed: |new: |deleted: )/) then
-        # SEND EMAIL NAO
-        message = <<MESSAGE_END
-From: AcidGreen File Integrity Checker <support@acidgreen.com.au>
-To: Support <support@acidgreen.com.au>
-Subject: Changes detected on #{host}
+        @changes = output
+        message = email_template(@options[:email_template])
+        puts message
+        exit
+        Net::SMTP.start(@options[:mailserver], 25) do | smtp |
+        smtp.send_message message+output, @options[:from_address], @options[:to_address]
+        smtp.finish
+      end
 
-This is a message from the AcidGreen file integrity checker.
-This service has detected changes on a site that it monitors.
-Such changes may be indicative of malicious activity.
-
-Following is a list of the changes detected:
-
-
-MESSAGE_END
-          Net::SMTP.start(@options[:mailserver], 25) do | smtp |
-          smtp.send_message message+output, @options[:from_address], @options[:to_address]
-          smtp.finish
-        end
-
-        # Update the known-good db so we don't spam the bejeesus out of support
-        @options.update = @options.check
-        update_site
+      # Update the known-good db so we don't spam the bejeesus out of support
+      update_site
 
       end
     rescue Rush::BashFailed => e
@@ -189,21 +189,16 @@ MESSAGE_END
     end
   end
 
-  # Upload the binary and our config file to the remote host
-  #TODO: Check that file exists and error correct if it doesn't
+  # Upload the binary (in case it's been compromised on remote) and our config file to the remote host
   def upload_binary_and_config(config_file_local, config_filename_remote, host)
-
-    # Upload the binary (in case it's been compromised on remote)
     transfer INTEGRIT_BINARY, host+":integrit"
-
-    # Upload the config file
     transfer config_file_local.to_s, host+":"+config_filename_remote
   end
 
   # Grab the ssh host string from the config file (expected format is '# Host: user@server')
   # NOTE: This utility expects that you have an ssh key set up for this connection
-  def remote_host(config_file)
-    config_file.contents.match(/(# Host: )(.*)$/)[2]
+  def remote_host(the_file)
+    the_file.contents.match(/(# Host: )(.*)$/)[2]
   end
 
   # Move a file via scp from one host to another
@@ -233,3 +228,4 @@ end
 
 app = Integrit_Remote.new(ARGV, STDIN)
 app.run()
+

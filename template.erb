@@ -1,0 +1,11 @@
+From: File Integrity Checker <<%= @options[:from_address] %>>
+To: <%= @options[:to_address] %>
+Subject: Changes detected on <%= @host %>
+
+This is a message from the Integrit-remote file integrity checker.
+This service has detected changes on a site that it monitors.
+Such changes may be indicative of malicious activity.
+
+Following is a list of the changes detected:
+
+<%= @changes %>
