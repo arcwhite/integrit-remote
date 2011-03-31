@@ -93,7 +93,7 @@ class Integrit_Remote
     config_file = @local[CONFIG_DIR+"/"+config_filename]
     host = remote_host config_file
 
-    uploadBinaryAndConfig(config_file, config_filename, host)
+    upload_binary_and_config(config_file, config_filename, host)
 
     # Remote-execute
     begin
