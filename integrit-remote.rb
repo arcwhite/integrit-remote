@@ -173,16 +173,13 @@ class Integrit_Remote
       if output.match(/^(changed: |new: |deleted: )/) then
         @changes = output
         message = email_template(@options[:email_template])
-        puts message
-        exit
         Net::SMTP.start(@options[:mailserver], 25) do | smtp |
-        smtp.send_message message+output, @options[:from_address], @options[:to_address]
-        smtp.finish
-      end
+          smtp.send_message message+output, @options[:from_address], @options[:to_address]
+          smtp.finish
+        end
 
-      # Update the known-good db so we don't spam the bejeesus out of support
-      update_site
-
+        # Update the known-good db so we don't spam the bejeesus out of support
+        update_site
       end
     rescue Rush::BashFailed => e
       puts "ERROR: #{e}"
