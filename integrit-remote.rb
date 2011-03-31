@@ -69,17 +69,20 @@ class Integrit_Remote
     end
 
     opts.on('-i', '--init SITE', 'Create the first known-good database for a site') do |sitename|
-      @options[:init] = sitename
+      @options[:init] = true
+      @options[:sitename] = sitename
       @options[:outputList] = false
     end
 
     opts.on('-u', '--update SITE', 'Update an existing site\'s known-good db') do |sitename|
-      @options[:update] = sitename
+      @options[:update] = true
+      @options[:sitename] = sitename
       @options[:outputList] = false
     end
 
     opts.on('-c', '--check SITE', 'Check an existing site\'s integrity') do |sitename|
-      @options[:check] = sitename
+      @options[:check] = true
+      @options[:sitename] = sitename
       @options[:outputList] = false
     end
 
@@ -97,12 +100,21 @@ class Integrit_Remote
       return false
     end
 
+    if @options[:sitename]
+      yield "Invalid config file" if @local[CONFIG_DIR+"/"+config_filename].contents_or_blank.nil?
+      return false
+    end
+
+    if @options[:check]
+
+    end
+
     true
   end
 
   def init_site
     # Create config
-    puts @options.init
+    puts @options[:init]
   end
 
   # Update known-good db
