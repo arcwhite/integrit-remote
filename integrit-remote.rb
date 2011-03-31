@@ -53,11 +53,11 @@ class Integrit_Remote
 
   def parse_options?
     opts = OptionParser.new
-    opts.banner = "Usage: integrit-remote.rb [--init|--update|--check] sitename"
+    opts.banner = "Usage: integrit-remote.rb [--init|--update|--check] site_name"
 
     #The mailserver MUST be specified
-    opts.on('-m', '--mailserver', 'Specify the mailserver') do |mailserver|
-      @options[:mailserver] = mailserver
+    opts.on('-m', '--mailserver', 'Specify the mailserver') do |mail_server|
+      @options[:mailserver] = mail_server
     end
 
     opts.on('-f', '--from', 'Specify the from-address of the email') do |from_address|
@@ -68,21 +68,21 @@ class Integrit_Remote
       @options[:to_address] = to_address
     end
 
-    opts.on('-i', '--init SITE', 'Create the first known-good database for a site') do |sitename|
+    opts.on('-i', '--init SITE', 'Create the first known-good database for a site') do |site_name|
       @options[:init] = true
-      @options[:sitename] = sitename
+      @options[:sitename] = site_name
       @options[:outputList] = false
     end
 
-    opts.on('-u', '--update SITE', 'Update an existing site\'s known-good db') do |sitename|
+    opts.on('-u', '--update SITE', 'Update an existing site\'s known-good db') do |site_name|
       @options[:update] = true
-      @options[:sitename] = sitename
+      @options[:sitename] = site_name
       @options[:outputList] = false
     end
 
-    opts.on('-c', '--check SITE', 'Check an existing site\'s integrity') do |sitename|
+    opts.on('-c', '--check SITE', 'Check an existing site\'s integrity') do |site_name|
       @options[:check] = true
-      @options[:sitename] = sitename
+      @options[:sitename] = site_name
       @options[:outputList] = false
     end
 
@@ -100,8 +100,8 @@ class Integrit_Remote
       return false
     end
 
-    if @options[:sitename]
-      yield "Invalid config file" if @local[CONFIG_DIR+"/"+config_filename].contents_or_blank.nil?
+    if @options[:sitename] && @local[CONFIG_DIR+"/"+@options[:sitename]].contents_or_blank.eql?("")
+      yield "Invalid config file."
       return false
     end
 
